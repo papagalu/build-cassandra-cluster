@@ -17,32 +17,36 @@ param(
     [string]$configPath
 )
 
-function Get-Config() {
+function Get-Config {
     param(
         [Parameter(Mandatory=$true)]
         [string]$configPath
     )
-    Get-Content "$configPath" | foreach-object -begin {$settings=@{}} -process `
+
+    Get-Content $configPath | ForEach-Object -Begin {$settings=@{}} -Process `
         { $k = [regex]::split($_,'='); if(($k[0].CompareTo("") -ne 0) -and `
         ($k[0].StartsWith("[") -ne $True)) { $settings.Add($k[0], $k[1]) } }
     return $settings
 }
 
-function InstallCassandraCSharpDriver() {
+function Install-CassandraCSharpDriver {
     param(
         [Parameter(Mandatory=$true)]
         [hashtable]$settings
     )
-    $nugetURL = $settings.Get_Item("nuget_URL")
-    $nugetFolder = $settings.Get_Item("path_to_nuget")
 
-    Invoke-WebRequest $nugetURL -OutFile $nugetFolder\nuget.exe
-    & $nugetFolder\nuget.exe install CassandraCSharpDriver -OutputDirectory $nugetFolder
+    $nugetURL = $settings["nuget_URL"]
+    $nugetFolder = $settings["path_to_nuget"]
+
+    Invoke-WebRequest $nugetURL -OutFile "$nugetFolder\nuget.exe"
+    & "$nugetFolder\nuget.exe" install CassandraCSharpDriver `
+        -OutputDirectory $nugetFolder
 }
 
-function Main() {
+function Main {
     $settings = Get-Config -configPath $configPath
-    InstallCassandraCSharpDriver $settings
+    Install-CassandraCSharpDriver $settings
 }
 
 Main
+

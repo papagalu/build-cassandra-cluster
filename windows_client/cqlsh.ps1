@@ -24,7 +24,7 @@
     Name of the keyspace the cassandra client connects to
     It has to be created before running this script
 .EXAMPLE
-    C:\PS>$client = <script> -IPs @("ip1", "ip2", ...) -keyspace "your_keyspace"
+    C:\PS>$client = <script> -IPs @("ip1", "ip2",...) -keyspace "your_keyspace"
     C:\PS>$client.executeQuery("SELECT * FROM <your_table>;")
 .NOTES
     .
@@ -41,20 +41,20 @@ param(
     [string]$keyspace
 )
 
-$ErrorActionPreferance="stop"
+$ErrorActionPreferance = "stop"
 
-function Get-Config() {
+function Get-Config {
     param(
         [Parameter(Mandatory=$true)]
         [string]$configPath
     )
-    Get-Content "$configPath" | foreach-object -begin {$settings=@{}} -process `
+    Get-Content "$configPath" | ForEach-Object -Begin {$settings=@{}} -Process `
         { $k = [regex]::split($_,'='); if(($k[0].CompareTo("") -ne 0) -and `
         ($k[0].StartsWith("[") -ne $True)) { $settings.Add($k[0], $k[1]) } }
     return $settings
 }
 
-function Get-BlacklistedDLLs() {
+function Get-BlacklistedDLLs {
     <#
     .SYNOPSIS
     These DLLs are mot required and fail to load so we blacklist them.
@@ -69,28 +69,27 @@ function Get-BlacklistedDLLs() {
     return $doNotLoad
 }
 
-function LoadCassandraCSharpDriver() {
-    $DLLs=Get-ChildItem -Path $baseFolder -Filter "*.dll" -Recurse `
+function Load-CassandraCSharpDriver {
+    $DLLs = Get-ChildItem -Path $baseFolder -Filter "*.dll" -Recurse `
         -ErrorAction SilentlyContinue -Force | % { $_.FullName }
 
     $blacklist = Get-BlacklistedDLLs
 
     $DLLs = Compare-Object -DifferenceObject $DLLs -ReferenceObject $doNotLoad -PassThru
-    $DLLs | % {Add-Type -Path $_} -ErrorAction SilentlyContinue
+    $DLLs | ForEachObject {Add-Type -Path $_ -ErrorAction SilentlyContinue}
 }
 
 $settings = Get-Config -configPath $configPath
-$baseFolder = $settings.Get_Item("path_to_nuget")
+$baseFolder = $settings["path_to_nuget"]
 
-LoadCassandraCSharpDriver
+Load-CassandraCSharpDriver
 
 $builder = [Cassandra.Cluster]::Builder()
 
-foreach($ip in $IPs) {
-    $builder.AddContactPoint($ip) 2>&1 | out-null
-}
+$IPs | ForEach-Object {$builder.AddContactPoint($_)}
 
 $cluster = $builder.Build()
 $session = $cluster.Connect($keyspace)
 
 return $session
+
