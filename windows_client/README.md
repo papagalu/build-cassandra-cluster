@@ -5,7 +5,9 @@ Requirements:
 * A keyspace in the cluster
 
 ```
-install_cassandra_client_requirements.ps1
+install_cassandra_client_requirements.ps1 ` 
+    -nugetURL https://dist.nuget.org/win-x86-commandline/latest/nuget.exe `
+    -installPath <somePath>
 
 # string array of ips of your cluster
 $IPs = @("ip1", "ip2", ...)

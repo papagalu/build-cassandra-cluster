@@ -17,32 +17,34 @@ param(
     [string]$configPath
 )
 
-function Get-Config() {
+function Get-Config {
     param(
         [Parameter(Mandatory=$true)]
         [string]$configPath
     )
-    Get-Content "$configPath" | foreach-object -begin {$settings=@{}} -process `
+
+    Get-Content $configPath | ForEach-Object -Begin {$settings=@{}} -Process `
         { $k = [regex]::split($_,'='); if(($k[0].CompareTo("") -ne 0) -and `
         ($k[0].StartsWith("[") -ne $True)) { $settings.Add($k[0], $k[1]) } }
     return $settings
 }
 
 #creates childs from parent vhdx for each machine
-function CreateChild() {
+function CreateChild {
     param(
         [Parameter(Mandatory=$true)]
         [hashtable]$settings
     )
 
-    for($i=0; $i -lt $settings.Get_Item("number_of_machines"); $i++) {
-        $path = $settings.Get_Item("path_to_vhd") + "\Cassandra-node-$i.vhdx"
-        New-VHD -Path $path -ParentPath $settings.Get_Item("path_to_parent") -differencing
+    for($i=0; $i -lt $settings["number_of_machines"]; $i++) {
+        $path = $settings["path_to_vhd"] + "\Cassandra-node-$i.vhdx"
+        New-VHD -Path $path -ParentPath `
+	    $settings["path_to_parent"] -differencing
     }
 }
 
 #creates VMs, and attaches the configdrive
-function CreateCluster() {
+function CreateCluster {
     param(
         [Parameter(Mandatory=$true)]
         [hashtable]$settings
@@ -50,20 +52,29 @@ function CreateCluster() {
 
     CreateChild $settings
 
-    $memory =  $settings.Get_Item("memory_per_machine")
-    for($i=0; $i -lt $settings.Get_Item("number_of_machines"); $i++) {
-        $path_to_vhd = $settings.Get_Item("path_to_vhd") + "\Cassandra-node-$i.vhdx"
-        $path_to_configdrive = $settings.Get_Item("path_to_configdrive") + "\config-drive$i.iso"
-        new-vm -Name "Cassandra-Node-$i" -VHDPath $path_to_vhd `
-            -MemoryStartupBytes $memory -SwitchName external
-        Set-VMDvdDrive -VMName "Cassandra-node-$i" -Path "$path_to_configdrive"
+    $memory =  $settings["memory_per_machine"]
+    $path_to_vhd = $settings["path_to_vhd"] 
+    for($i=0; $i -lt $settings["number_of_machines"]; $i++) {
+        
+        $path_to_vhd_i = "$path_to_vhd\Cassandra-node-$i.vhdx"
+
+        New-VM -Name "Cassandra-Node-$i" -VHDPath $path_to_vhd_i `
+            -SwitchName external
+        Set-VMMemory -DynamicMemoryEnabled $false -StartupBytes $memory
+    }
+
+    if($settings.Contains("path_to_configdrive")){
+        $path_to_configdrive = $settings["path_to_configdrive"]
+        for($i=0; $i -lt $settings["number_of_machines"]; $i++) {
+            $path_to_configdrive_i = "$path_to_configdrive\config_drive$i.iso"
+            Set-VMDvdDrive -VMName "Cassandra-node-$i" 
+                -Path $path_to_configdrive_i
+            }
     }
 }
 
 function StartHyper-v() {
-    foreach($vm in get-vm | where name -like Cassandra*) {
-        start-vm $vm
-    }
+    Get-VM | ForEach-Object { where name -like Cassandra* | Start-VM $_}
 }
 
 function Main() {
@@ -73,3 +84,4 @@ function Main() {
 }
 
 Main
+
