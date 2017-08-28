@@ -22,6 +22,7 @@ class InstanceFactory {
     [Array] $VHDFiles
     [String] $BaseVHDsPath
     [String] $WorkingVHDsPath
+    [String] $DvdDrive
 
     InstanceFactory ($Name, $Backend, $BaseVHDsPath, $WorkingVHDsPath) {
         $this.Name = $Name
@@ -29,16 +30,20 @@ class InstanceFactory {
         $this.BaseVHDsPath = $BaseVHDsPath
         $this.WorkingVHDsPath = $WorkingVHDsPath
 
-        $this.CopyVHDFiles
-        $this.GetVHDFiles
-        $this.CreateInstances
+        $this.MakeChild()
+        $this.GetVHDFiles()
+        $this.CreateInstances()
     }
 
-    [void] CopyVHDFiles () {
+    [void] MakeChild () {
+        Write-Host "Making Child from Parent VHDs..." -ForegroundColor Magenta
+
         $Files = Get-ChildItem -Path $this.BaseVHDsPath -Recurse -Filter *.vhd* | % {$_.FullName}
 
         foreach ($VHDFile in $Files) {
-            Copy-Item -Path $VHDFile -Destination $this.WorkingVHDsPath
+            $Random = Get-Random -Maximum 1000
+            $Path = $this.WorkingVHDsPath + "\$Random.vhdx" 
+            New-VHD -ParentPath $VHDFile -Path $Path -Differencing
         }
     }
 
@@ -47,10 +52,12 @@ class InstanceFactory {
     }
 
     [void] CreateInstances () {
+        Write-Host "Creating Instances..." -ForegroundColor Magenta
+
         foreach ($VHDFile in $this.VHDFiles) {
             $Random = Get-Random -Maximum 1000
-            $Call = "$this.Name-$Random"
-            $this.Instances += [HypervInstance]::new($Call, $this.Backend, $VHDFile)
+            $Call = "Cassandra-$Random"
+            $this.Instances += [HypervInstance]::new($this.Backend, $Call, $VHDFile)
         }
     }
 
@@ -69,7 +76,8 @@ function Main () {
         [String] $CassandraInstallFile = "C:\Users\dimi\workspace\utils\build-cluster\create_cluster\installCassandra.sh",
         [String] $NugetInstallPath = "C:\Users\dimi\workspace\utils\NugetInstallPath",
         [String] $NugetURL =  "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe",
-        [String] $SecretsFile = "C:\Users\dimi\workspace\utils\build-cluster\create_cluster\secrets.ps1"
+        [String] $BackendSecretsFile = "C:\Users\dimi\workspace\utils\build-cluster\create_cluster\secrets.ps1",
+        [String] $GuestSecretsFile = "C:\Users\dimi\workspace\utils\build-cluster\create_cluster\secrets2.ps1"
     )
 
     InstallPoshSSH
@@ -78,14 +86,22 @@ function Main () {
     . $BackendFile
     . $CassandraClusterFile
 
-    $Params = @("localhost", $SecretsFile)
+    $Params = @("localhost", $BackendSecretsFile)
     $Backend = [HypervBackend]::new($Params)
 
     $Factory = [InstanceFactory]::new("CBSLInstance", $Backend, $BaseVHDsPath, $WorkingVHDsPath)
     $Instances = $Factory.GetInstances()
 
-    $Cluster = [CassandraCluster]::new("CBSLCassandraCluster", $SecretsFile, $NugetInstallPath, $CassandraInstallFile)
+    $Cluster = [CassandraCluster]::new("CBSLCassandraCluster", $GuestSecretsFile, $NugetInstallPath, $CassandraInstallFile)
+    
+    foreach ($Instance in $Instances) {
+        $Cluster.AddInstance($Instance)
+    }
+    
     $Cluster.CreateCluster()
+    
+    # TODO(papagalu): save in a file for later use
+    $Cluster.IPs
 
 }
 

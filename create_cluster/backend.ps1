@@ -624,7 +624,7 @@ class HypervBackend : Backend {
             param($InstanceName, $VHDPath)
 
             New-VM -Name $InstanceName -VHDPath $VHDPath `
-                   -MemoryStartupBytes 2048MB `
+                   -MemoryStartupBytes 3500MB `
                    -Generation 1 `
                    -SwitchName "External"
             Set-VM -Name $InstanceName `
@@ -634,11 +634,11 @@ class HypervBackend : Backend {
                          -DynamicMemoryEnabled $false
             Enable-VMIntegrationService -VMName $InstanceName `
                                         -Name "*" 
-
             Start-VM -Name $InstanceName
-            Write-Output "VM $InstanceName has been created and started."
+            Write-Host "VM $InstanceName has been created and started." -ForegroundColor Magenta
 
         }
+
         Invoke-Command -ComputerName $this.ComputerName -HideComputer `
                        -Credential $this.Credentials `
                        -ScriptBlock $scriptBlock `
@@ -694,11 +694,15 @@ class HypervBackend : Backend {
             param($InstanceName)
             (Get-VMNetworkAdapter -VMName $InstanceName).IPaddresses[0]
         }
-
-        $ip = Invoke-Command -ComputerName $this.ComputerName -HideComputer `
-            -Credential $this.Credentials `
-            -ScriptBlock $scriptBlock `
-            -ArgumentList $InstanceName
+        
+        $ip = ""
+        do {
+            Start-Sleep -s 10
+            $ip = Invoke-Command -ComputerName $this.ComputerName -HideComputer `
+                -Credential $this.Credentials `
+                -ScriptBlock $scriptBlock `
+                -ArgumentList $InstanceName
+        } while([string]::IsNullOrWhiteSpace($ip))
 
         return $ip 
     }

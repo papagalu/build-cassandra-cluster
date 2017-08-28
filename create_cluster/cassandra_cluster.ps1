@@ -19,7 +19,6 @@ class CassandraCluster {
     [Array] $IPs = @()
     [String] $NugetInstallPath
     [String] $CassandraInstallFile
-    [String] $Seeds = ""
     [String] $SecretsPath 
     [System.Management.Automation.PSCredential] $Credentials
 
@@ -58,6 +57,8 @@ class CassandraCluster {
 
     [void] GetSSHSessions () {
         $this.SSHSessions = $()
+        Get-SSHSession | Remove-SSHSession
+        Get-SSHTrustedHost | Remove-SSHTrustedHost
 
         ForEach ($ip in $this.IPs) {
             $this.SSHSessions += New-SSHSession `
@@ -69,6 +70,7 @@ class CassandraCluster {
 
     [void] CreateCluster() {
         Write-Host "Starting creation of the Cassandra Cluster" -ForegroundColor Magenta
+
         ForEach ($Instance in $this.Instances) {
             $Instance.CreateInstance()
         }
@@ -95,35 +97,37 @@ class CassandraCluster {
             Set-SCPFile -LocalFile $this.CassandraInstallFile `
                         -RemotePath "/root" `
                         -ComputerName $ip `
-                        -Credential $this.Credentials
+                        -Credential $this.Credentials `
                         -AcceptKey $true
         }
 
         ForEach ($SSHSession in $this.SSHSessions) {
-            Invoke-SShCommand -SSHSession $SSHSession 
+            Invoke-SShCommand -SSHSession $SSHSession `
                               -Command "chmod +x /root/$basename"
-            Invoke-SSHCommand -SSHSession $SSHSession
-                              -Command "/root/$basename"
+            Invoke-SSHCommand -SSHSession $SSHSession `
+                              -Command "/root/$basename" `
+                              -TimeOut 300 `
+                              -ErrorAction SilentlyContinue | Out-Null
         }
     }
 
-    [void] GetSeeds () {
+    [String] GetSeeds () {
         $s = ""
         
         $b = $this.IPs -join ', '
         $s = '"' + $b + '"'
 
-        $this.Seeds = $s
+        return $s
    }
 
     [void] ConfigureCluster() {
         Write-Host "Configuring the Cassandra Cluster" -ForegroundColor Magenta
 
-        $this.GetSeeds()
+        $seeds = $this.GetSeeds()
 
         ForEach ($SSHSession in $this.SSHSessions) {
         Invoke-SSHCommand -SSHSession $SSHSession `
-                          -Command "echo $(hostname -I) $(hostname) >> /etc/hosts"
+                          -Command "echo `$(hostname -I) `$(hostname) >> /etc/hosts"
         Invoke-SSHCommand -SSHSession $SSHSession `
                           -Command 'sed -i "10s/.*/cluster_name: \"CloudBaseCluster\"/" /opt/cassandra/conf/cassandra.yaml'
         Invoke-SSHCommand -SSHSession $SSHSession `
@@ -133,13 +137,15 @@ class CassandraCluster {
         invoke-sshcommand -SSHSession $SSHSession `
                           -Command 'sed -i "598s/.*/listen_address: $(hostname -I)/" /opt/cassandra/conf/cassandra.yaml'
         invoke-sshcommand -SSHSession $SSHSession `
-                          -Command "sed -i `"424s/.*/                - seeds: `"$this.seeds`"/`" /opt/cassandra/conf/cassandra.yaml"
+                          -Command "sed -i `"424s/.*/                - seeds: `"$seeds`"/`" /opt/cassandra/conf/cassandra.yaml"
         }
     }
 
     [void] StartCassandra () {
-         ForEach ($SSHSession in $this.SSHSessions) {
-             Invoke-SShCommand -SSHSession $SSHSession -Command "/opt/cassandra/bin/cassandra -R"
+        Write-Host "Starting Cassandra..." -ForegroundColor Magenta
+
+        ForEach ($SSHSession in $this.SSHSessions) {
+            Invoke-SShCommand -SSHSession $SSHSession -Command "/opt/cassandra/bin/cassandra -R"
         }
     }
 
